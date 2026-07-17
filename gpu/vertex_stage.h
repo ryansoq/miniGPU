@@ -1,7 +1,7 @@
 // vertex_stage — 頂點階段：每個頂點跑 vertex shader ISA（shader_core）。
 // U0-U15 = MVP 矩陣，I0-I2 = 頂點位置 → O0-O3 = clip 座標。
 // program 跟 fragment 一樣是 GLSL→SPIR-V→LLVM→ToyGPU ISA 編出來的
-// （shaders3d/mvp.vert），兩段共用同一條編譯鏈、同一個 shader_core。
+// （shaders/mvp.vert），兩段共用同一條編譯鏈、同一個 shader_core。
 #pragma once
 #include "math3d.h"
 #include "mesh.h"

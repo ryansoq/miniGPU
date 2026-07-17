@@ -9,7 +9,7 @@
 struct GpuState {
     float R[16] = {};   // 通用
     float I[4]  = {};   // 輸入（rasterizer 寫）
-    float U[8]  = {};   // uniform（driver 寫）
+    float U[16] = {};   // uniform：擴到 16（放得下 4×4 MVP 矩陣）   // uniform（driver 寫）
     float O[4]  = {};   // 輸出（shader 寫、GPU 讀）
 };
 

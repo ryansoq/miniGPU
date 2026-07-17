@@ -1,10 +1,10 @@
 # ToyGPU LLVM Backend — build 說明
 
-target 原始碼放本 repo `backend/ToyGPU/`（好讀好 review），
+target 原始碼放本 repo `compiler/backend/ToyGPU/`（好讀好 review），
 用 symlink 掛進 llvm-project，是 out-of-tree 原始碼 + in-tree build 的混合式。
 
 ```bash
-bash backend/setup-llvm.sh      # clone llvm 20.1.8 + patch Triple + symlink + cmake
+bash compiler/backend/setup-llvm.sh   # clone llvm 20.1.8 + patch Triple + symlink + cmake
 ninja -C ~/llvm-project/build llc   # 第一次 ~30-60 分鐘，之後增量幾秒
 ~/llvm-project/build/bin/llc -mtriple=toygpu frag.ll -o frag.s
 ```

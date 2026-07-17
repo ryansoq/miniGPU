@@ -1,18 +1,7 @@
-*.o
-teapot
-triangle
-/*.png
+# 所有中間檔 + 執行檔都在 build/ 裡
 build/
-__pycache__/
+# 根目錄輸出的 PNG（docs/ 裡的留著給 README）
+/*.png
 !docs/*.png
-build_spirv2llvm
-teapot_spirv
-teapot_tex
-build_light.*
-pipeline_*.bin
-pipeline_*.spv
-pipeline_*.ll
-pipeline_*.s
-pipeline_*.s.raw
-teapot_pipeline
-build_spirv2llvm
+*.o
+__pycache__/
