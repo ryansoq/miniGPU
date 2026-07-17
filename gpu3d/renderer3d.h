@@ -35,3 +35,11 @@ struct Framebuffer3D {
 void drawMesh(const Mesh &mesh, const Mat4 &model, const Mat4 &view,
               const Mat4 &proj, Vec3 lightDir, Framebuffer3D &fb,
               const Texture *tex = nullptr);
+
+// 同上，但 fragment 階段跑「真正編譯出來的 ToyGPU ISA」：
+// 每個 pixel 把內插後的法向量填進 shader 的 input 暫存器 I0-I2，
+// 執行 program（GLSL→SPIR-V→LLVM→ISA 編出來的），從 O0-O3 取顏色。
+// 這證明 fragment shader 真的走了那條編譯鏈，不是 C++ 直算。
+void drawMeshShaderISA(const Mesh &mesh, const Mat4 &model, const Mat4 &view,
+                       const Mat4 &proj, const std::vector<uint32_t> &program,
+                       Framebuffer3D &fb);
