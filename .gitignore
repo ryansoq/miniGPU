@@ -1,6 +1,7 @@
 *.o
 teapot
 triangle
-*.png
+/*.png
 build/
 __pycache__/
+!docs/*.png

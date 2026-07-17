@@ -53,8 +53,21 @@ Mesh loadOBJ(const char *path) {
   return m;
 }
 
+// 圓柱投影 UV：繞 Y 軸的角度→u，高度→v。旋轉體（茶壺）貼圖用這個很自然。
+void genCylindricalUV(Mesh &m) {
+  float ymin = 1e30f, ymax = -1e30f;
+  for (auto &p : m.pos) { ymin = std::min(ymin, p.y); ymax = std::max(ymax, p.y); }
+  float inv = (ymax > ymin) ? 1.0f / (ymax - ymin) : 1.0f;
+  m.u.resize(m.pos.size()); m.v.resize(m.pos.size());
+  for (size_t i = 0; i < m.pos.size(); i++) {
+    float ang = std::atan2(m.pos[i].z, m.pos[i].x);      // -π..π
+    m.u[i] = (ang + 3.14159265f) / (2 * 3.14159265f);    // 0..1
+    m.v[i] = (m.pos[i].y - ymin) * inv;                  // 0..1
+  }
+}
+
 namespace {
-struct Vary { Vec3 ndc; float invw; Vec3 nrm; };   // 每頂點變換後的資料
+struct Vary { Vec3 ndc; float invw; Vec3 nrm; float u, v; };   // 每頂點變換後的資料
 
 float edge(float ax, float ay, float bx, float by, float px, float py) {
   return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
@@ -63,9 +76,11 @@ uint8_t to8(float f) { return (uint8_t)std::clamp((int)(f * 255 + 0.5f), 0, 255)
 } // namespace
 
 void drawMesh(const Mesh &mesh, const Mat4 &model, const Mat4 &view,
-              const Mat4 &proj, Vec3 lightDir, Framebuffer3D &fb) {
+              const Mat4 &proj, Vec3 lightDir, Framebuffer3D &fb,
+              const Texture *tex) {
   Mat4 mvp = proj * view * model;
   Vec3 L = normalize(lightDir);
+  bool hasUV = tex && mesh.u.size() == mesh.pos.size();
 
   // ── Vertex 階段：每個頂點跑一次 MVP（這就是 vertex shader 的工作）──
   std::vector<Vary> vs(mesh.pos.size());
@@ -77,6 +92,7 @@ void drawMesh(const Mesh &mesh, const Mat4 &model, const Mat4 &view,
     // 法向量用 model 矩陣旋轉到世界（此處 model 只有旋轉，直接乘方向）
     Vec4 n = model * Vec4{mesh.normal[i].x, mesh.normal[i].y, mesh.normal[i].z, 0};
     vs[i].nrm = normalize(Vec3{n.x, n.y, n.z});
+    if (hasUV) { vs[i].u = mesh.u[i]; vs[i].v = mesh.v[i]; }
   }
 
   // ── 每三角形 rasterize（+ Z-buffer + Lambert 打光）──
@@ -115,11 +131,20 @@ void drawMesh(const Mesh &mesh, const Mat4 &model, const Mat4 &view,
         // 內插法向量 → Lambert 漫反射
         Vec3 n = normalize(A.nrm * b0 + B.nrm * b1 + C.nrm * b2);
         float diff = std::max(0.0f, dot(n, L));
-        float shade = 0.15f + 0.85f * diff;          // ambient + diffuse
+        float shade = 0.35f + 0.65f * diff;          // ambient + diffuse
+
+        // fragment 的基底色：有貼圖 → 取樣閃卡；否則瓷器色
+        float br, bg, bb;
+        if (hasUV) {
+          float u = b0 * A.u + b1 * B.u + b2 * C.u;
+          float v = b0 * A.v + b1 * B.v + b2 * C.v;
+          tex->sample(u, v, br, bg, bb);
+        } else { br = 0.85f; bg = 0.82f; bb = 0.78f; }
+
         uint8_t *p = &fb.rgba[di * 4];
-        p[0] = to8(shade * 0.85f);                   // 暖白瓷器色
-        p[1] = to8(shade * 0.82f);
-        p[2] = to8(shade * 0.78f);
+        p[0] = to8(shade * br);
+        p[1] = to8(shade * bg);
+        p[2] = to8(shade * bb);
         p[3] = 255;
       }
   }
