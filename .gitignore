@@ -1,0 +1,6 @@
+*.o
+teapot
+triangle
+*.png
+build/
+__pycache__/
