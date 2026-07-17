@@ -6,9 +6,16 @@
 //   function-local 變數（OpVariable Function + OpStore/OpLoad）。
 //   → 能翻譯有打光計算的 fragment shader，不只是 RGB 直通。
 //
+// v2 再擴充，讓 vertex shader 也能走同一條鏈（跟 fragment 一致）：
+//   OpTypeMatrix（mat4 型別）、從 uniform block 讀整個矩陣、
+//   OpMatrixTimesVector（矩陣×向量，scalarize 成 16 乘 12 加）。
+//   矩陣元素 (row r, col c) → @toygpu.uniform(4r+c)，跟 vertex_stage.cpp
+//   攤平 U[4r+c]=mvp.m[r][c] 完全對齊，不用管 SPIR-V 的 ColMajor 佈局。
+//
 // ABI（跟 ToyGPU backend 對接）：
-//   Input  channel  → @toygpu.input(i32 channel)
-//   Output channel  → @toygpu.output(i32 channel, float)
+//   Input   channel → @toygpu.input(i32 channel)
+//   Uniform slot    → @toygpu.uniform(i32 slot)
+//   Output  channel → @toygpu.output(i32 channel, float)
 //
 // two-pass：pass1 建 id 表；pass2 走 body scalarize + emit .ll 文字。
 //===----------------------------------------------------------------------===//
@@ -16,14 +23,17 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 enum Op : uint16_t {
   OpName = 5, OpDecorate = 71, OpTypeVoid = 19, OpTypeFloat = 22,
-  OpTypeInt = 21, OpTypeVector = 23, OpTypePointer = 32, OpTypeFunction = 33,
+  OpTypeInt = 21, OpTypeVector = 23, OpTypeMatrix = 24,
+  OpTypePointer = 32, OpTypeFunction = 33,
   OpVariable = 59, OpConstant = 43, OpLoad = 61, OpStore = 62,
   OpAccessChain = 65, OpCompositeExtract = 81, OpCompositeConstruct = 80,
+  OpMatrixTimesVector = 145,
   OpFMul = 133, OpFAdd = 129, OpFSub = 131, OpFNegate = 127,
   OpFunction = 54, OpLabel = 248, OpReturn = 253, OpFunctionEnd = 56,
 };
@@ -62,9 +72,11 @@ int main(int argc, char **argv) {
   std::map<uint32_t, uint32_t> vecComp, ptrStorage, ptrPointee, varStorage;
   std::map<uint32_t, float> constF;
   std::map<uint32_t, uint32_t> constI;
+  std::set<uint32_t> matType;               // 矩陣型別 id（mat4）
   for (auto &in : insts) {
     switch (in.op) {
     case OpTypeVector: vecComp[in.ops[0]] = in.ops[2]; break;
+    case OpTypeMatrix: matType.insert(in.ops[0]); break;
     case OpTypePointer: ptrStorage[in.ops[0]] = in.ops[1]; ptrPointee[in.ops[0]] = in.ops[2]; break;
     case OpVariable: varStorage[in.ops[1]] = in.ops[2]; break;   // resultId → SC
     case OpConstant: {
@@ -82,6 +94,7 @@ int main(int argc, char **argv) {
   std::map<uint32_t, std::vector<std::string>> vecChannels;       // vector id → channels
   std::map<uint32_t, std::pair<uint32_t,int>> accessChain;        // id → (baseVar, index)
   std::map<uint32_t, std::string> localVal;                        // function-local var → 目前值
+  std::map<uint32_t, int> matrixBase;                              // 矩陣 id → U[] 起始 slot
   std::string body;
   int tmp = 0;
   auto fresh = [&] { return "%t" + std::to_string(tmp++); };
@@ -101,12 +114,21 @@ int main(int argc, char **argv) {
       break;
     }
     case OpLoad: {                 // resultType, id, pointer
-      uint32_t id = in.ops[1], ptr = in.ops[2];
-      if (accessChain.count(ptr)) {                 // 讀某個 channel
+      uint32_t rt = in.ops[0], id = in.ops[1], ptr = in.ops[2];
+      if (accessChain.count(ptr)) {                 // 透過 access chain 讀
         auto [base, idx] = accessChain[ptr];
-        if (varStorage.count(base) && varStorage[base] == SC_Input) {
+        uint32_t sc = varStorage.count(base) ? varStorage[base] : 0;
+        if (sc == SC_Uniform && matType.count(rt)) {
+          // 讀整個 uniform 矩陣：記住它在 U[] 的起始 slot（member idx，每 mat4 佔 16）
+          matrixBase[id] = idx * 16;
+        } else if (sc == SC_Input) {                // input 的某個 channel
           std::string t = fresh();
           body += "  " + t + " = call float @toygpu.input(i32 " +
+                  std::to_string(idx) + ")\n";
+          scalarVal[id] = t;
+        } else if (sc == SC_Uniform) {              // uniform 的某個純量 slot
+          std::string t = fresh();
+          body += "  " + t + " = call float @toygpu.uniform(i32 " +
                   std::to_string(idx) + ")\n";
           scalarVal[id] = t;
         }
@@ -131,12 +153,19 @@ int main(int argc, char **argv) {
     }
     case OpStore: {                // pointer, object
       uint32_t ptr = in.ops[0], obj = in.ops[1];
-      if (varStorage.count(ptr) && varStorage[ptr] == SC_Output && vecChannels.count(obj)) {
+      // 直接寫 output var（fragment 的 fragColor），或透過 access chain 寫
+      // output struct 的 member（vertex 的 gl_Position 在 gl_PerVertex 內）。
+      bool toOut = varStorage.count(ptr) && varStorage[ptr] == SC_Output;
+      if (accessChain.count(ptr)) {
+        uint32_t base = accessChain[ptr].first;
+        if (varStorage.count(base) && varStorage[base] == SC_Output) toOut = true;
+      }
+      if (toOut && vecChannels.count(obj)) {
         auto &ch = vecChannels[obj];
         for (size_t c = 0; c < ch.size(); c++)
           body += "  call void @toygpu.output(i32 " + std::to_string(c) +
                   ", float " + ch[c] + ")\n";
-      } else {                     // 寫 function-local 變數：記住它的值
+      } else if (!toOut) {         // 寫 function-local 變數：記住它的值
         localVal[ptr] = resolve(obj);
       }
       break;
@@ -158,6 +187,32 @@ int main(int argc, char **argv) {
       std::vector<std::string> ch;
       for (uint16_t k = 2; k < in.wc - 1; k++) ch.push_back(resolve(in.ops[k]));
       vecChannels[in.ops[1]] = ch;
+      break;
+    }
+    case OpMatrixTimesVector: {     // type, id, matrix, vector
+      // result[r] = Σ_c M[r][c] * v[c]，M[r][c] 取自 @toygpu.uniform(base+4r+c)。
+      uint32_t id = in.ops[1], mat = in.ops[2], vec = in.ops[3];
+      int base = matrixBase.count(mat) ? matrixBase[mat] : 0;
+      auto &v = vecChannels[vec];              // 4 個 channel（LLVM float 字串）
+      std::vector<std::string> res;
+      for (int r = 0; r < 4; r++) {
+        std::string acc;
+        for (int c = 0; c < (int)v.size(); c++) {
+          std::string u = fresh();
+          body += "  " + u + " = call float @toygpu.uniform(i32 " +
+                  std::to_string(base + 4 * r + c) + ")\n";
+          std::string p = fresh();
+          body += "  " + p + " = fmul float " + u + ", " + v[c] + "\n";
+          if (c == 0) { acc = p; }
+          else {
+            std::string s = fresh();
+            body += "  " + s + " = fadd float " + acc + ", " + p + "\n";
+            acc = s;
+          }
+        }
+        res.push_back(acc);
+      }
+      vecChannels[id] = res;
       break;
     }
     default: break;
