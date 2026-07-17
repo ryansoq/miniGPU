@@ -13,10 +13,6 @@
 
 ![teapot](docs/teapot.png)
 
-**芙莉蓮茶壺**（+ 貼圖：閃卡當 texture，圓柱投影 UV + 雙線性取樣）：
-
-![teapot frieren](docs/teapot_frieren.png)
-
 ## 進度
 
 - [x] v1 base 搬移（gpu/ toygl/ toyasm/ tests/ + LLVM backend/）
