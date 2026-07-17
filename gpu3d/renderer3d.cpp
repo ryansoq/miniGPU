@@ -43,8 +43,7 @@ Mesh loadOBJ(const char *path) {
   } else {
     for (size_t i = 0; i + 2 < m.idx.size(); i += 3) {
       uint32_t a = m.idx[i], b = m.idx[i + 1], c = m.idx[i + 2];
-      // 這個 teapot OBJ 的 face 繞向讓 cross(b-a,c-a) 指向內 → 取負朝外
-      Vec3 fn = cross(m.pos[c] - m.pos[a], m.pos[b] - m.pos[a]);
+      Vec3 fn = cross(m.pos[b] - m.pos[a], m.pos[c] - m.pos[a]);
       m.normal[a] = m.normal[a] + fn;
       m.normal[b] = m.normal[b] + fn;
       m.normal[c] = m.normal[c] + fn;
@@ -172,7 +171,10 @@ void drawMeshShaderISA(const Mesh &mesh, const Mat4 &model, const Mat4 &view,
     auto sy = [&](const Vary &v) { return (1 - (v.ndc.y * 0.5f + 0.5f)) * fb.h; };
     float x0 = sx(A), y0 = sy(A), x1 = sx(B), y1 = sy(B), x2 = sx(C), y2 = sy(C);
     float area = edge(x0, y0, x1, y1, x2, y2);
-    if (area >= 0) continue;
+    if (area >= 0) continue;               // 背面剔除
+    area = -area;                          // ← 跟 drawMesh 一致：翻正，否則
+                                           //   barycentric 反號 → 法向量被
+                                           //   內插成負的 → 打光整個反掉
     int minx = std::max(0, (int)std::floor(std::min({x0, x1, x2})));
     int maxx = std::min(fb.w - 1, (int)std::ceil(std::max({x0, x1, x2})));
     int miny = std::max(0, (int)std::floor(std::min({y0, y1, y2})));
