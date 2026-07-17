@@ -5,3 +5,7 @@ triangle
 build/
 __pycache__/
 !docs/*.png
+build_spirv2llvm
+teapot_spirv
+teapot_tex
+build_light.*
