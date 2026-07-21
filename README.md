@@ -12,6 +12,12 @@ shaders/*.vert|frag ─[compiler]→ ISA binary ─[gpu 執行]→ teapot.png
 
 ![teapot](docs/teapot.png)
 
+同一條管線、**同兩顆 shader**（`build/vertex.bin` + `build/frag.bin`），只換一顆
+mesh，就能畫 25 萬個三角形的 Stanford 龍 —— 證明 vertex（MVP）與 fragment（打光）
+跟畫什麼模型無關。純軟體光柵器，640×640 一幀約 0.2 秒（`bash build_dragon.sh`）：
+
+![dragon](docs/dragon.gif)
+
 ## 三層架構：app → gl → gpu
 
 真實 GPU 就是這樣分層的 —— app 不直接碰硬體，透過圖形 API 間接開動 GPU：
