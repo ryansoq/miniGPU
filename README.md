@@ -16,7 +16,9 @@ shaders/*.vert|frag ─[compiler]→ ISA binary ─[gpu 執行]→ teapot.png
 mesh，就能畫 25 萬個三角形的 Stanford 龍 —— 證明 vertex（MVP）與 fragment（打光）
 跟畫什麼模型無關。純軟體光柵器，640×640 一幀約 0.2 秒（`bash build_dragon.sh`）：
 
-![dragon](docs/dragon.gif)
+![dragon](docs/dragon.png)
+
+> 想看轉一圈的動畫：[`docs/dragon.gif`](docs/dragon.gif)（把 `rotateY` 掃一整圈算 48 幀，ffmpeg 併成 gif）。
 
 ## 三層架構：app → gl → gpu
 
