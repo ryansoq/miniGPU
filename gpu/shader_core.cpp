@@ -17,8 +17,8 @@ enum Op : uint8_t {
 
 bool isR(uint8_t r) { return r < 16; }
 bool isI(uint8_t r) { return r >= 16 && r < 20; }
-bool isU(uint8_t r) { return r >= 20 && r < 36; }   // U0-U15
-bool isO(uint8_t r) { return r >= 36 && r < 40; }   // O0-O3
+bool isU(uint8_t r) { return r >= 20 && r < 68; }   // U0-U47（3 顆矩陣）
+bool isO(uint8_t r) { return r >= 68 && r < 72; }   // O0-O3
 
 bool fail(size_t pc, const char *msg, uint8_t reg) {
     fprintf(stderr, "shader_core: pc=%zu: %s (reg encoding %u)\n", pc, msg, reg);
@@ -30,7 +30,7 @@ void dumpState(const GpuState &st) {
     for (int i = 0; i < 16; i++) fprintf(stderr, " %g", st.R[i]);
     fprintf(stderr, "\n  I: %g %g %g %g\n", st.I[0], st.I[1], st.I[2], st.I[3]);
     fprintf(stderr, "  U:");
-    for (int i = 0; i < 16; i++) fprintf(stderr, " %g", st.U[i]);
+    for (int i = 0; i < 48; i++) fprintf(stderr, " %g", st.U[i]);
     fprintf(stderr, "\n  O: %g %g %g %g\n", st.O[0], st.O[1], st.O[2], st.O[3]);
 }
 
@@ -89,14 +89,14 @@ bool shader_run(const std::vector<uint32_t> &program, GpuState &st, bool trace) 
 
         case LDUNI:
             if (!isR(dst))  return fail(pc, "LDUNI dst must be R", dst);
-            if (!isU(src1)) return fail(pc, "LDUNI src must be U0-U15", src1);
+            if (!isU(src1)) return fail(pc, "LDUNI src must be U0-U47", src1);
             st.R[dst] = st.U[src1 - 20];
             break;
 
         case STOUT:
             if (!isO(dst))  return fail(pc, "STOUT dst must be O0-O3", dst);
             if (!isR(src1)) return fail(pc, "STOUT src must be R", src1);
-            st.O[dst - 36] = st.R[src1];
+            st.O[dst - 68] = st.R[src1];
             break;
 
         default:

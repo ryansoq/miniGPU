@@ -1,14 +1,14 @@
 #version 450
-// Vertex shader：把 3D 頂點用 MVP 矩陣變換到 clip space。
-// mvp 是 uniform（driver 每幀填好 proj*view*model），pos 是頂點位置。
-// gl_Position 交給固定功能 rasterizer 做 perspective divide (÷w)。
+// Vertex shader（真引擎版，三專案共用）：proj / view / model 三顆矩陣分開由 driver
+// 上傳（一個 UBO 裝三顆），shader 自己做 proj*(view*(model*pos))。
+// 最簡版見 ToyGPU v1（先合成 mvp、shader 只做 mvp*pos）。
 //
-// 這支會走跟 fragment 完全一樣的鏈：
-//   GLSL → SPIR-V → LLVM IR → ToyGPU 組語 → ISA binary
-// mat4×vec4 由 spirv2llvm 展成 16 個 @toygpu.uniform 讀 + 乘加，
-// uniform slot 4r+c 對應 vertex_stage.cpp 攤平的 U[4r+c]=mvp.m[r][c]。
+// ★ 刻意寫成右結合 proj*(view*(model*vec4)) → 三次「矩陣 × 向量」
+//   (OpMatrixTimesVector)，剛好是我們 spirv2llvm 支援的運算。
+//   若寫成 proj*view*model*vec4 會先做「矩陣 × 矩陣」(OpMatrixTimesMatrix)，
+//   那是我們還沒實作的 OP。
 layout(location = 0) in vec3 pos;
-layout(binding = 0) uniform UBO { mat4 mvp; };
+layout(binding = 0) uniform UBO { mat4 proj; mat4 view; mat4 model; };
 void main() {
-  gl_Position = mvp * vec4(pos, 1.0);
+  gl_Position = proj * (view * (model * vec4(pos, 1.0)));
 }
